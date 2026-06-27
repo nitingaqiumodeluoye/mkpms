@@ -174,6 +174,7 @@ extern void *kfunc_do_page_fault;
 
 /* follow_page_pte hook (GUP hiding) */
 extern void *kfunc_follow_page_pte;
+extern void *kfunc_follow_page_mask;
 
 /* fork protection hooks */
 extern void *kfunc_dup_mmap;
@@ -575,6 +576,8 @@ int wxshadow_handle_exec_fault(void *mm, unsigned long addr);
 void do_page_fault_before(hook_fargs3_t *args, void *udata);
 void follow_page_pte_before(hook_fargs5_t *args, void *udata);
 void follow_page_pte_after(hook_fargs5_t *args, void *udata);
+void follow_page_mask_before(hook_fargs4_t *args, void *udata);
+void follow_page_mask_after(hook_fargs4_t *args, void *udata);
 void exit_mmap_before(hook_fargs1_t *args, void *udata);
 int wxshadow_brk_handler(struct pt_regs *regs, unsigned int esr);
 int wxshadow_step_handler(struct pt_regs *regs, unsigned int esr);

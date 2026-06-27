@@ -104,6 +104,7 @@ void *kfunc_do_page_fault = NULL;
 
 /* follow_page_pte hook (GUP hiding for /proc/pid/mem etc.) */
 void *kfunc_follow_page_pte = NULL;
+void *kfunc_follow_page_mask = NULL;
 
 /* fork protection hooks */
 void *kfunc_dup_mmap = NULL;
@@ -1485,7 +1486,7 @@ static long wxshadow_init(const char *args, const char *event, void *__user rese
         pr_info("wxshadow: hooked exit_mmap for proper cleanup\n");
     }
 
-    /* Hook follow_page_pte for GUP hiding (/proc/pid/mem, process_vm_readv, ptrace) */
+    /* Hook follow_page_pte/follow_page_mask for GUP hiding */
     if (kfunc_follow_page_pte) {
         ret = hook_wrap5(kfunc_follow_page_pte,
                          follow_page_pte_before, follow_page_pte_after, NULL);
@@ -1494,6 +1495,16 @@ static long wxshadow_init(const char *args, const char *event, void *__user rese
             kfunc_follow_page_pte = NULL;
         } else {
             pr_info("wxshadow: hooked follow_page_pte for GUP hiding\n");
+        }
+    }
+    if (!kfunc_follow_page_pte && kfunc_follow_page_mask) {
+        ret = hook_wrap4(kfunc_follow_page_mask,
+                         follow_page_mask_before, follow_page_mask_after, NULL);
+        if (ret != HOOK_NO_ERR) {
+            pr_warn("wxshadow: failed to hook follow_page_mask: %d\n", ret);
+            kfunc_follow_page_mask = NULL;
+        } else {
+            pr_info("wxshadow: hooked follow_page_mask for GUP hiding fallback\n");
         }
     }
 
@@ -1539,6 +1550,8 @@ static long wxshadow_init(const char *args, const char *event, void *__user rese
     }
     if (kfunc_follow_page_pte) {
         pr_info("wxshadow: GUP hiding ENABLED (follow_page_pte hooked)\n");
+    } else if (kfunc_follow_page_mask) {
+        pr_info("wxshadow: GUP hiding ENABLED (follow_page_mask hooked)\n");
     } else {
         pr_info("wxshadow: GUP hiding DISABLED\n");
     }
@@ -1682,6 +1695,12 @@ static long wxshadow_exit(void *__user reserved)
                     follow_page_pte_after);
         pr_info("wxshadow: unhooked follow_page_pte (phase 4.5)\n");
         wait_for_handlers_drain("phase4.5-follow_page_pte");
+    }
+    if (kfunc_follow_page_mask) {
+        hook_unwrap(kfunc_follow_page_mask, follow_page_mask_before,
+                    follow_page_mask_after);
+        pr_info("wxshadow: unhooked follow_page_mask (phase 4.5)\n");
+        wait_for_handlers_drain("phase4.5-follow_page_mask");
     }
 
     /*

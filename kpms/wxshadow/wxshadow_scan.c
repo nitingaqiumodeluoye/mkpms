@@ -400,13 +400,19 @@ int resolve_symbols(void)
         pr_info("wxshadow: page fault handler found at %px\n", kfunc_do_page_fault);
     }
 
-    /* follow_page_pte for GUP hiding (/proc/pid/mem, process_vm_readv, ptrace) */
+    /* follow_page_pte/follow_page_mask for GUP hiding (/proc/pid/mem, process_vm_readv, ptrace) */
     pr_info("wxshadow: [14/14] follow_page_pte (GUP hiding)...\n");
     kfunc_follow_page_pte = (void *)lookup_name_safe("follow_page_pte");
     if (kfunc_follow_page_pte) {
         pr_info("wxshadow: follow_page_pte found at %px\n", kfunc_follow_page_pte);
     } else {
-        pr_warn("wxshadow: follow_page_pte not found, GUP hiding disabled\n");
+        kfunc_follow_page_mask = (void *)lookup_name_safe("follow_page_mask");
+        if (kfunc_follow_page_mask) {
+            pr_info("wxshadow: follow_page_mask found at %px (fallback)\n",
+                    kfunc_follow_page_mask);
+        } else {
+            pr_warn("wxshadow: follow_page_pte/follow_page_mask not found, GUP hiding disabled\n");
+        }
     }
 
     /* dup_mmap for precise fork protection (real mm duplication only) */

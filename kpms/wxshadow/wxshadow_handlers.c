@@ -288,6 +288,96 @@ void follow_page_pte_after(hook_fargs5_t *args, void *udata)
     WX_HANDLER_EXIT();
 }
 
+/*
+ * Older kernels such as 4.19 may not expose follow_page_pte but still export
+ * follow_page_mask(vma, address, flags, page_mask). Reuse the same GUP hiding
+ * logic and stash restore state in the extra argument slots available through
+ * hook_fargs8_t.
+ */
+static void follow_page_mask_before_impl(hook_fargs4_t *args, void *udata)
+{
+    hook_fargs8_t *full = (hook_fargs8_t *)args;
+    void *vma = (void *)args->arg0;
+    unsigned long address = (unsigned long)args->arg1;
+    unsigned int flags = (unsigned int)(unsigned long)args->arg2;
+    void *mm;
+    struct wxshadow_page *page;
+    u64 *ptep;
+    u64 orig_pte;
+
+    (void)udata;
+
+    full->arg4 = 0;  /* default: no restore needed */
+
+    if (list_empty(&page_list))
+        return;
+
+    if (flags & FOLL_WRITE)
+        return;
+
+    mm = vma_mm(vma);
+    if (!mm)
+        return;
+
+    page = wxshadow_find_page(mm, address);  /* takes ref */
+    if (!page)
+        return;
+
+    spin_lock(&global_lock);
+    if (page->dead || page->state != WX_STATE_SHADOW_X ||
+        page->logical_release_pending) {
+        spin_unlock(&global_lock);
+        wxshadow_page_put(page);
+        return;
+    }
+    spin_unlock(&global_lock);
+
+    if (wxshadow_page_begin_gup_hide(page, mm, page->page_addr, &ptep,
+                                     &orig_pte) != 0) {
+        wxshadow_page_put(page);
+        return;
+    }
+
+    full->arg4 = (unsigned long)page;
+    full->arg5 = orig_pte;
+    full->arg6 = (unsigned long)ptep;
+}
+
+static void follow_page_mask_after_impl(hook_fargs4_t *args, void *udata)
+{
+    hook_fargs8_t *full = (hook_fargs8_t *)args;
+    struct wxshadow_page *page = (void *)full->arg4;
+    u64 orig_pte;
+    u64 *ptep;
+    void *vma;
+
+    (void)udata;
+
+    if (!page)
+        return;
+
+    orig_pte = (u64)full->arg5;
+    ptep = (u64 *)full->arg6;
+    vma = (void *)args->arg0;
+
+    wxshadow_page_finish_gup_hide(page, vma, page->page_addr, ptep, orig_pte);
+    wxshadow_page_put(page);  /* release ref from before hook */
+}
+
+void follow_page_mask_before(hook_fargs4_t *args, void *udata)
+{
+    WX_HANDLER_ENTER();
+    follow_page_mask_before_impl(args, udata);
+    WX_HANDLER_EXIT();
+}
+
+void follow_page_mask_after(hook_fargs4_t *args, void *udata)
+{
+    WX_HANDLER_ENTER();
+    follow_page_mask_after_impl(args, udata);
+    WX_HANDLER_EXIT();
+}
+
 /* ========== exit_mmap hook ========== */
 
 /*
