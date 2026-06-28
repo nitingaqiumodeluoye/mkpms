@@ -1095,17 +1095,25 @@ int wxshadow_do_patch(void *mm, unsigned long addr, void __user *buf, unsigned l
 
     /* Read user buffer into kernel memory via PTE walk */
     patch_data = copy_from_user_via_pte(buf, len);
-    if (!patch_data)
+    if (!patch_data) {
+        pr_err("wxshadow: [patch] copy_from_user_via_pte failed buf=%px len=%lu\n",
+               buf, len);
         return -14;  /* EFAULT */
+    }
 
     ret = wxshadow_acquire_write_ctx(mm, addr, "patch", &ctx);
-    if (ret < 0)
+    if (ret < 0) {
+        pr_err("wxshadow: [patch] acquire_write_ctx failed addr=%lx page=%lx ret=%d\n",
+               addr, addr & PAGE_MASK, ret);
         goto out_free;
+    }
 
     if (!ctx.is_new) {
         ret = upsert_patch_record(ctx.page_info, offset, len, patch_data,
                                   &old_patch_data, &rebuild_len);
         if (ret < 0) {
+            pr_err("wxshadow: [patch] existing upsert_patch_record failed addr=%lx offset=%lu len=%lu ret=%d\n",
+                   addr, offset, len, ret);
             wxshadow_put_write_ctx(&ctx);
             goto out_free;
         }
@@ -1113,12 +1121,16 @@ int wxshadow_do_patch(void *mm, unsigned long addr, void __user *buf, unsigned l
 
         ret = wxshadow_rebuild_shadow_range(ctx.page_info, offset, rebuild_len);
         if (ret < 0) {
+            pr_err("wxshadow: [patch] existing rebuild_shadow_range failed addr=%lx offset=%lu len=%lu ret=%d\n",
+                   addr, offset, rebuild_len, ret);
             wxshadow_put_write_ctx(&ctx);
             goto out_free;
         }
 
         ret = wxshadow_activate_write_ctx(&ctx, false);
         if (ret < 0) {
+            pr_err("wxshadow: [patch] existing activate_write_ctx failed addr=%lx ret=%d\n",
+                   addr, ret);
             wxshadow_put_write_ctx(&ctx);
             goto out_free;
         }
@@ -1135,16 +1147,25 @@ int wxshadow_do_patch(void *mm, unsigned long addr, void __user *buf, unsigned l
 
     /* Build shadow: original content + patch overlay */
     ret = wxshadow_prepare_new_write_ctx(&ctx);
-    if (ret < 0)
+    if (ret < 0) {
+        pr_err("wxshadow: [patch] new prepare_write_ctx failed addr=%lx ret=%d\n",
+               addr, ret);
         goto out_free_page;
+    }
     ret = upsert_patch_record(ctx.page_info, offset, len, patch_data, NULL, NULL);
-    if (ret < 0)
+    if (ret < 0) {
+        pr_err("wxshadow: [patch] new upsert_patch_record failed addr=%lx offset=%lu len=%lu ret=%d\n",
+               addr, offset, len, ret);
         goto out_free_page;
+    }
     patch_data = NULL;  /* ownership moved to page record */
 
     ret = wxshadow_rebuild_shadow_range(ctx.page_info, offset, len);
-    if (ret < 0)
+    if (ret < 0) {
+        pr_err("wxshadow: [patch] new rebuild_shadow_range failed addr=%lx offset=%lu len=%lu ret=%d\n",
+               addr, offset, len, ret);
         goto out_free_page;
+    }
 
     ctx.page_info->nr_bps = 0;
 
@@ -1154,6 +1175,8 @@ int wxshadow_do_patch(void *mm, unsigned long addr, void __user *buf, unsigned l
                 ctx.page_addr, offset, len, ctx.page_info->pfn_original,
                 ctx.page_info->pfn_shadow);
     } else {
+        pr_err("wxshadow: [patch] new activate_write_ctx failed addr=%lx page=%lx ret=%d\n",
+               addr, ctx.page_addr, ret);
         goto out_free_page;
     }
 
