@@ -388,11 +388,16 @@ static inline void *mm_pgd(void *mm) {
 
 static inline void *safe_kcalloc(size_t n, size_t size, unsigned int flags)
 {
+    void *ptr;
+
     if (kfunc_kcalloc)
         return kfunc_kcalloc(n, size, flags);
     if (n != 0 && size > ((size_t)-1) / n)
         return NULL;
-    return kfunc_kzalloc(n * size, flags);
+    ptr = kfunc_kzalloc(n * size, flags);
+    if (ptr)
+        memset(ptr, 0, n * size);
+    return ptr;
 }
 
 /* ========== Address translation ========== */

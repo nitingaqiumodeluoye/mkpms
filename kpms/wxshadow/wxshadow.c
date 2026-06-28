@@ -245,6 +245,7 @@ struct wxshadow_page *wxshadow_create_page(void *mm, unsigned long page_addr)
     page = kfunc_kzalloc(sizeof(*page), 0xcc0);
     if (!page)
         return NULL;
+    memset(page, 0, sizeof(*page));
 
     page->mm = mm;
     page->page_addr = page_addr;
