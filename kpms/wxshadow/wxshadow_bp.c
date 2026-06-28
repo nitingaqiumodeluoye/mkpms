@@ -1146,30 +1146,47 @@ int wxshadow_do_patch(void *mm, unsigned long addr, void __user *buf, unsigned l
     }
 
     /* Build shadow: original content + patch overlay */
+    pr_err("wxshadow: [patch] new before prepare_write_ctx addr=%lx page=%lx\n",
+           addr, addr & PAGE_MASK);
     ret = wxshadow_prepare_new_write_ctx(&ctx);
     if (ret < 0) {
         pr_err("wxshadow: [patch] new prepare_write_ctx failed addr=%lx ret=%d\n",
                addr, ret);
         goto out_free_page;
     }
+    pr_err("wxshadow: [patch] new after prepare_write_ctx addr=%lx page=%lx shadow=%px\n",
+           addr, ctx.page_addr, ctx.page_info ? ctx.page_info->shadow_page : NULL);
+
+    pr_err("wxshadow: [patch] new before upsert_patch_record addr=%lx offset=%lu len=%lu\n",
+           addr, offset, len);
     ret = upsert_patch_record(ctx.page_info, offset, len, patch_data, NULL, NULL);
     if (ret < 0) {
         pr_err("wxshadow: [patch] new upsert_patch_record failed addr=%lx offset=%lu len=%lu ret=%d\n",
                addr, offset, len, ret);
         goto out_free_page;
     }
+    pr_err("wxshadow: [patch] new after upsert_patch_record addr=%lx nr_patches=%d\n",
+           addr, ctx.page_info ? ctx.page_info->nr_patches : -1);
     patch_data = NULL;  /* ownership moved to page record */
 
+    pr_err("wxshadow: [patch] new before rebuild_shadow_range addr=%lx offset=%lu len=%lu\n",
+           addr, offset, len);
     ret = wxshadow_rebuild_shadow_range(ctx.page_info, offset, len);
     if (ret < 0) {
         pr_err("wxshadow: [patch] new rebuild_shadow_range failed addr=%lx offset=%lu len=%lu ret=%d\n",
                addr, offset, len, ret);
         goto out_free_page;
     }
+    pr_err("wxshadow: [patch] new after rebuild_shadow_range addr=%lx offset=%lu len=%lu\n",
+           addr, offset, len);
 
     ctx.page_info->nr_bps = 0;
 
+    pr_err("wxshadow: [patch] new before activate_write_ctx addr=%lx page=%lx state=%d\n",
+           addr, ctx.page_addr, ctx.page_info ? ctx.page_info->state : -1);
     ret = wxshadow_activate_write_ctx(&ctx, true);
+    pr_err("wxshadow: [patch] new after activate_write_ctx addr=%lx ret=%d state=%d\n",
+           addr, ret, ctx.page_info ? ctx.page_info->state : -1);
     if (ret == 0) {
         pr_info("wxshadow: [patch] new shadow %lx+%lx (%lu bytes) pfn %lx->%lx\n",
                 ctx.page_addr, offset, len, ctx.page_info->pfn_original,
