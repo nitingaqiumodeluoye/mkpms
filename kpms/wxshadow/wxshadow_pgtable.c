@@ -561,26 +561,45 @@ int wxshadow_page_activate_shadow_locked(struct wxshadow_page *page, void *vma,
 {
     int ret;
     unsigned long shadow_pfn;
+    unsigned long original_pfn;
+    enum wxshadow_state state;
+    bool dead;
+    bool release_pending;
+    bool logical_release_pending;
 
     if (!page)
         return -1;
 
     spin_lock(&global_lock);
-    if (page->dead || page->release_pending ||
-        page->logical_release_pending || !page->pfn_shadow) {
+    dead = page->dead;
+    release_pending = page->release_pending;
+    logical_release_pending = page->logical_release_pending;
+    state = page->state;
+    shadow_pfn = page->pfn_shadow;
+    original_pfn = page->pfn_original;
+    if (dead || release_pending || logical_release_pending || !shadow_pfn) {
         spin_unlock(&global_lock);
+        pr_err("wxshadow: [activate_shadow] reject addr=%lx page=%px state=%d dead=%d release=%d logical_release=%d orig_pfn=%lx shadow_pfn=%lx vma=%px\n",
+               addr, page, state, dead, release_pending,
+               logical_release_pending, original_pfn, shadow_pfn, vma);
         return -2;
     }
-    shadow_pfn = page->pfn_shadow;
     spin_unlock(&global_lock);
 
+    pr_err("wxshadow: [activate_shadow] before switch addr=%lx page=%px state=%d orig_pfn=%lx shadow_pfn=%lx vma=%px\n",
+           addr, page, state, original_pfn, shadow_pfn, vma);
     ret = wxshadow_page_switch_mapping_locked(page, vma, addr, shadow_pfn, 0);
+    pr_err("wxshadow: [activate_shadow] after switch addr=%lx page=%px ret=%d shadow_pfn=%lx\n",
+           addr, page, ret, shadow_pfn);
     if (ret == 0) {
         wxshadow_flush_icache_page(addr);
         spin_lock(&global_lock);
         if (!page->dead)
             page->state = WX_STATE_SHADOW_X;
+        state = page->state;
         spin_unlock(&global_lock);
+        pr_err("wxshadow: [activate_shadow] activated addr=%lx page=%px state=%d\n",
+               addr, page, state);
     }
 
     return ret;
